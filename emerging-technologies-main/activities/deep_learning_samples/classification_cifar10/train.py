@@ -27,14 +27,16 @@ import time
 
 # For this example, I use mobilenetv3 small network
 def select_model(num_classes):
-    #model = timm.create_model('efficientvit_m5.r224_in1k', pretrained=True, num_classes=num_classes)
-    model = timm.create_model('seresnextaa101d_32x8d.sw_in12k_ft_in1k_288', pretrained=True, num_classes=num_classes)
+    # model = timm.create_model('efficientvit_m5.r224_in1k', pretrained=True, num_classes=num_classes)
+    # model = timm.create_model('seresnextaa101d_32x8d.sw_in12k_ft_in1k_288', pretrained=True, num_classes=num_classes)
+    model = timm.create_model('efficientvit_l1.r224_in1k', pretrained=True, num_classes=num_classes)
     return model
 
 
 def config(model=None):
     # Define what device to use (GPU/CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
     # Define loss function and optimizer
     criterion = torch.nn.CrossEntropyLoss()
     if model is not None: # for training
@@ -64,7 +66,7 @@ def train_model(train_loader, val_loader, epochs, num_classes, base_dir='runs'):
     # Training loop 
     for epoch in range(epochs):
         # Training step on batches
-        model, train_loss, train_acc = train(model, train_loader, device, optimizer, criterion)
+        model, train_loss, train_acc = train(model, train_loader, device, optimizer, criterion, epoch, epochs)
         # Validation step
         model, val_loss, val_acc = validate(model, val_loader, device, criterion)
         # Save parameters
@@ -76,33 +78,72 @@ def train_model(train_loader, val_loader, epochs, num_classes, base_dir='runs'):
 
 
 
-def train(model, train_loader, device, optimizer, criterion):
+# def train(model, train_loader, device, optimizer, criterion):
+#     model.train()
+#     running_loss = 0.0
+#     correct = 0
+#     total = 0
+#     # Train on training set
+#     for inputs, labels in train_loader:
+#         inputs, labels = inputs.to(device), labels.to(device)
+#         # Zero the parameter gradients
+#         optimizer.zero_grad()
+#         # Forward pass
+#         outputs = model(inputs)
+#         loss = criterion(outputs, labels)
+#         # Backward pass and optimization
+#         loss.backward()
+#         optimizer.step()
+#         # Statistics
+#         running_loss += loss.item()
+#         _, predicted = torch.max(outputs.data, 1)
+#         total += labels.size(0)
+#         correct += (predicted == labels).sum().item()
+#     # Calculate training loss and accuracy
+#     train_loss = running_loss / len(train_loader)
+#     train_acc = 100 * correct / total
+#     return (model, train_loss, train_acc)
+
+import sys
+
+def train(model, train_loader, device, optimizer, criterion, epoch=None, total_epochs=None):
     model.train()
     running_loss = 0.0
     correct = 0
     total = 0
-    # Train on training set
-    for inputs, labels in train_loader:
+
+    for batch_idx, (inputs, labels) in enumerate(train_loader):
         inputs, labels = inputs.to(device), labels.to(device)
-        # Zero the parameter gradients
+
         optimizer.zero_grad()
-        # Forward pass
         outputs = model(inputs)
         loss = criterion(outputs, labels)
-        # Backward pass and optimization
+
         loss.backward()
         optimizer.step()
-        # Statistics
+
         running_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
-    # Calculate training loss and accuracy
+
+        # Progress message
+        epoch_str = f"Epoch [{epoch+1}/{total_epochs}] " if epoch is not None and total_epochs is not None else ""
+        batch_loss = running_loss / (batch_idx + 1)
+        batch_acc = 100 * correct / total
+        msg = (f"{epoch_str}Batch [{batch_idx+1}/{len(train_loader)}] "
+               f"Loss={batch_loss:.4f}, Acc={batch_acc:.2f}%")
+
+        # Print in-place
+        sys.stdout.write("\r" + msg)
+        sys.stdout.flush()
+
+    # Print final newline after finishing epoch
+    print()
+
     train_loss = running_loss / len(train_loader)
     train_acc = 100 * correct / total
     return (model, train_loss, train_acc)
-
-
 
 
 # For validation step
@@ -222,7 +263,7 @@ if __name__ == "__main__":
     # Important: You should set the input_size to what the model requires, 
     #            regardless the fact that CIFAR-10 images have 32x32 resolutions.
     #            Check the model card details for the input_size requirement.
-    train_loader, val_loader, _ = prepare_cifar10(input_size=(288, 288), batch_size=64)
+    train_loader, val_loader, _ = prepare_cifar10(input_size=(224, 224), batch_size=24)
 
     # Training
     history = train_model(train_loader, val_loader, num_classes=10, epochs=50)

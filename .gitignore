@@ -68,3 +68,7 @@ Thumbs.db
 # Environment variables
 .env
 .env.*
+
+.venv
+data
+runs
