@@ -34,9 +34,16 @@ def select_model(num_classes):
 
 
 def config(model=None):
-    # Define what device to use (GPU/CPU)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
+    # Define what device to use (Metal/MPS for Mac, CUDA for Nvidia, CPU otherwise)
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("Using Metal (MPS) device")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("Using CUDA device")
+    else:
+        device = torch.device("cpu")
+        print("Using CPU device")
     # Define loss function and optimizer
     criterion = torch.nn.CrossEntropyLoss()
     if model is not None: # for training
