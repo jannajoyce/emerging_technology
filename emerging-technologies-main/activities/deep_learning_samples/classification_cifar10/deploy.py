@@ -49,7 +49,7 @@ if __name__ == "__main__":
     # Important: You need to perform similar processes when you prepare data for training
     image_tensor = preprocess_image(image, input_size=(224, 224), device=device)
     # Step 4. Load model
-    model = torch.load('runs/train_1/best_model.pt')
+    model = torch.load('runs/train_26/best_model.pt')
     model.to(device)    
     model.eval()
     # Step 5. Predict image

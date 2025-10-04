@@ -21,10 +21,14 @@ def prepare_cifar10(input_size, batch_size):
 def transform_image(input_size):
     mean, std = get_imagenet_mean_std()
     transform = transforms.Compose([
-        transforms.Resize(input_size),  
+        transforms.Resize(input_size),
+        transforms.RandomCrop(input_size[0], padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
         transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std)  
-        ])
+        transforms.Normalize(mean=mean, std=std)
+    ])
     return transform
     
 

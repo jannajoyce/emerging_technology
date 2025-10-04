@@ -27,8 +27,9 @@ def evaluate(model, data_loader, device, criterion, num_classes, k, base_dir='ru
     all_labels = torch.tensor([], dtype=torch.long).to(device)  # Initialize empty tensor for labels
     all_preds = torch.tensor([], dtype=torch.long).to(device)   # Initialize empty tensor for predictions
     all_probs = torch.tensor([], dtype=torch.float).to(device)  # For probabilities (needed for AUC/PRC)
+    import sys
     with torch.no_grad():  # Disable gradient computation for validation
-        for inputs, labels in data_loader:
+        for batch_idx, (inputs, labels) in enumerate(data_loader):
             inputs, labels = inputs.to(device), labels.to(device)
             # Forward pass
             outputs = model(inputs)
@@ -41,6 +42,14 @@ def evaluate(model, data_loader, device, criterion, num_classes, k, base_dir='ru
             all_labels = torch.cat((all_labels, labels))
             all_preds = torch.cat((all_preds, predicted))
             all_probs = torch.cat((all_probs, torch.softmax(outputs, dim=1)))  # Softmax for probabilities
+            # Inline progress print
+            batch_loss = running_loss / (batch_idx + 1)
+            batch_acc = 100 * correct / total
+            msg = (f"Batch [{batch_idx+1}/{len(data_loader)}] "
+                   f"Loss={batch_loss:.4f}, Acc={batch_acc:.2f}%")
+            sys.stdout.write("\r" + msg)
+            sys.stdout.flush()
+    print()
     # Calculate validation loss and accuracy
     loss = running_loss / len(data_loader)
     acc = 100 * correct / total
@@ -94,7 +103,7 @@ def show_loss_accuracy(loss, acc, num_classes, all_labels, all_probs, all_preds,
     title = 'Model Evaluation Metrics'
     plt.title(title, fontsize=14)
     # Save the figure
-    plot_file_path = os.path.join(save_dir, f'{title}.png')
+    plot_file_path = os.path.join('/home/markacebu/janna/emerging_technology/emerging-technologies-main/activities/deep_learning_samples/classification_cifar10/runs/train_26', f'{title}.png')
     plt.savefig(plot_file_path)
     plt.close() 
     
@@ -114,7 +123,7 @@ def get_classification_report(all_labels, all_preds, save_dir):
     plt.ylabel('Classes')
     plt.xlabel('Metrics')
     # Save the figure
-    plot_file_path = os.path.join(save_dir, f'{title}.png')
+    plot_file_path = os.path.join('/home/markacebu/janna/emerging_technology/emerging-technologies-main/activities/deep_learning_samples/classification_cifar10/runs/train_26', f'{title}.png')
     plt.savefig(plot_file_path)
     plt.close() 
 
@@ -131,7 +140,7 @@ def get_confusion_matrix(all_labels, all_preds, save_dir):
     title = 'Confusion Matrix'
     plt.title(title)
     # Save the figure
-    plot_file_path = os.path.join(save_dir, f'{title}.png')
+    plot_file_path = os.path.join('/home/markacebu/janna/emerging_technology/emerging-technologies-main/activities/deep_learning_samples/classification_cifar10/runs/train_26', f'{title}.png')
     plt.savefig(plot_file_path)
     plt.close() 
     
@@ -160,7 +169,7 @@ def get_roc_auc_score(num_classes, all_labels, all_probs, save_dir):
     plt.ylabel('True Positive Rate')
     plt.legend(loc='lower right')
     # Save the figure
-    plot_file_path = os.path.join(save_dir, f'{title}.png')
+    plot_file_path = os.path.join('/home/markacebu/janna/emerging_technology/emerging-technologies-main/activities/deep_learning_samples/classification_cifar10/runs/train_26', f'{title}.png')
     plt.savefig(plot_file_path)
     plt.close() 
     
@@ -184,7 +193,7 @@ def get_precision_recall_curve(num_classes, all_labels, all_probs, save_dir):
     plt.title(title)
     plt.legend(loc='best')
     # Save the figure
-    plot_file_path = os.path.join(save_dir, f'{title}.png')
+    plot_file_path = os.path.join('/home/markacebu/janna/emerging_technology/emerging-technologies-main/activities/deep_learning_samples/classification_cifar10/runs/train_26', f'{title}.png')
     plt.savefig(plot_file_path)
     plt.close() 
 
@@ -195,4 +204,4 @@ if __name__ == "__main__":
     _, _, test_loader = prepare_cifar10(input_size=(320, 320), batch_size=64)
 
     # Testing
-    test_model(test_loader, num_classes=10, model_path='runs/train_1/best_model.pt')
+    test_model(test_loader, num_classes=10, model_path='runs/train_26/best_model.pt')

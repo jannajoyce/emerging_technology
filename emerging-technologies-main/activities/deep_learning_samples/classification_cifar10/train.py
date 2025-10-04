@@ -27,9 +27,8 @@ import time
 
 # For this example, I use mobilenetv3 small network
 def select_model(num_classes):
-    # model = timm.create_model('efficientvit_m5.r224_in1k', pretrained=True, num_classes=num_classes)
-    # model = timm.create_model('seresnextaa101d_32x8d.sw_in12k_ft_in1k_288', pretrained=True, num_classes=num_classes)
-    model = timm.create_model('efficientvit_l1.r224_in1k', pretrained=True, num_classes=num_classes)
+    # Use EfficientNet-B3 for higher accuracy
+    model = timm.create_model('efficientnet_b3', pretrained=True, num_classes=num_classes)
     return model
 
 
@@ -45,9 +44,10 @@ def config(model=None):
         device = torch.device("cpu")
         print("Using CPU device")
     # Define loss function and optimizer
-    criterion = torch.nn.CrossEntropyLoss()
+    # Label smoothing for better generalization
+    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
     if model is not None: # for training
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
         return device, criterion, optimizer
     else: # for testing
         return device, criterion
@@ -55,10 +55,19 @@ def config(model=None):
 
 
 def train_model(train_loader, val_loader, epochs, num_classes, base_dir='runs'):
-    # Configure training 
-    model = select_model(num_classes)    
+    # Configure training
+    model = select_model(num_classes)
     device, criterion, optimizer = config(model)
     model.to(device)
+    # Use OneCycleLR scheduler for aggressive learning rate scheduling
+    steps_per_epoch = len(train_loader)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=0.01, epochs=epochs, steps_per_epoch=steps_per_epoch)
+    use_amp = torch.cuda.is_available()
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    early_stop_patience = 10
+    best_val_loss = float('inf')
+    patience_counter = 0
     start_time = time.time()
     # Save losses and accuracies per epoch to generate plots later
     history = {
@@ -72,13 +81,22 @@ def train_model(train_loader, val_loader, epochs, num_classes, base_dir='runs'):
     save_dir = create_next_folder(base_dir, prefix='train_')
     # Training loop 
     for epoch in range(epochs):
-        # Training step on batches
-        model, train_loss, train_acc = train(model, train_loader, device, optimizer, criterion, epoch, epochs)
+        # Training step on batches (mixed precision)
+        model, train_loss, train_acc = train(model, train_loader, device, optimizer, criterion, epoch, epochs, scaler, scheduler)
         # Validation step
         model, val_loss, val_acc = validate(model, val_loader, device, criterion)
+        # Early stopping check
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= early_stop_patience:
+                print(f"Early stopping at epoch {epoch+1}")
+                break
         # Save parameters
         elapsed_time = get_elapsed_time(start_time)
-        history = update_history(history, epoch, epochs, train_loss, train_acc, val_loss, val_acc, model, elapsed_time, save_dir)  
+        history = update_history(history, epoch, epochs, train_loss, train_acc, val_loss, val_acc, model, elapsed_time, save_dir)
         # Plot loss and accuracy graphs to judge training convergence
         plot_loss_accuracy(history, save_dir)
     return history
@@ -123,11 +141,21 @@ def train(model, train_loader, device, optimizer, criterion, epoch=None, total_e
         inputs, labels = inputs.to(device), labels.to(device)
 
         optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-
-        loss.backward()
-        optimizer.step()
+        if scaler is not None:
+            # Mixed precision training for CUDA
+            with torch.cuda.amp.autocast():
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            # Standard training for CPU/Metal
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
 
         running_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
