@@ -10,7 +10,7 @@ if __name__ == '__main__':
     results = model.train(
         data="data/custom", # this is the parent directory of the dataset
         #epochs=2,          # number of epochs for training
-        epochs=40,
+        epochs=10,
         #imgsz=32,           # imgsz is also input_size
         imgsz=224,
         workers=8           # in case of RunTimeError, reduce this value until you found enough workers

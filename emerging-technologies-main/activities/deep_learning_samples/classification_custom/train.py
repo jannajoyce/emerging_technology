@@ -225,4 +225,4 @@ if __name__ == "__main__":
 
 
     # Training
-    history = train_model(train_loader, val_loader, num_classes=2, epochs=40)
+    history = train_model(train_loader, val_loader, num_classes=2, epochs=10)

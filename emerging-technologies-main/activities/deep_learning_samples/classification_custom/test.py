@@ -49,7 +49,9 @@ def evaluate(model, data_loader, device, criterion, num_classes, k, base_dir='ru
     # Create a new subfolder for the current run
     save_dir = create_next_folder(base_dir, prefix='test_')
     # Show summary of loss and accuracy
+    # show_loss_accuracy(loss, acc, num_classes, all_labels_cpu, all_probs, all_probs_cpu, all_preds_cpu, k, save_dir)
     show_loss_accuracy(loss, acc, num_classes, all_labels_cpu, all_probs_cpu, all_preds_cpu, k, save_dir)
+
     # Compute precision, recall, and F1 score (weighted average)
     get_classification_report(all_labels_cpu, all_preds_cpu, save_dir)
     # Compute confusion matrix
@@ -63,13 +65,24 @@ def evaluate(model, data_loader, device, criterion, num_classes, k, base_dir='ru
 
 
 def show_loss_accuracy(loss, acc, num_classes, all_labels, all_probs, all_preds, k, save_dir):
-    # Compute top-k accuracy (e.g., top-5 accuracy)
-    top_k_acc = metrics.top_k_accuracy_score(all_labels, all_probs, k=k, labels=range(num_classes))
-    # Compute MCC (Matthews Correlation Coefficient)
+    import numpy as np
+
+    # Debug: print shapes once
+    print(f"[DEBUG] all_labels shape={all_labels.shape}, all_probs shape={all_probs.shape}, num_classes={num_classes}")
+
+    # Clip k to not exceed num_classes
+    k = min(k, num_classes)
+
+    # For binary classification, take the probability of the positive class only
+    if num_classes == 2:
+        pos_class_probs = all_probs[:, 1]  # Take probabilities for class 1
+        top_k_acc = metrics.top_k_accuracy_score(all_labels, pos_class_probs, k=k, labels=[0, 1])
+    else:
+        top_k_acc = metrics.top_k_accuracy_score(all_labels, all_probs, k=k)
     mcc = metrics.matthews_corrcoef(all_labels, all_preds)
-    # Compute balanced accuracy
     bal_acc = metrics.balanced_accuracy_score(all_labels, all_preds)
-    # Put in one container
+
+    # Pack into dict
     metrics_data = {
         'Loss': [loss],
         'Accuracy': [acc],
@@ -77,24 +90,26 @@ def show_loss_accuracy(loss, acc, num_classes, all_labels, all_probs, all_preds,
         'Balanced Accuracy': [bal_acc],
         'MCC': [mcc]
     }
-    # Create a figure
-    fig, ax = plt.subplots(figsize=(8, 4))  # Adjust size as needed
+
+    # Create table plot
+    fig, ax = plt.subplots(figsize=(8, 4))
     ax.axis('tight')
     ax.axis('off')
-    # Create the table
     table_data = [[metric, value[0]] for metric, value in metrics_data.items()]
     table = ax.table(cellText=table_data, colLabels=['Metric', 'Value'], cellLoc='center', loc='center')
-    # Style the table
+
     table.auto_set_font_size(False)
     table.set_fontsize(12)
-    table.scale(1.2, 1.2)  # Scale the table for better visibility
-    # Add title
+    table.scale(1.2, 1.2)
+
     title = 'Model Evaluation Metrics'
     plt.title(title, fontsize=14)
-    # Save the figure
+
+    # Save
     plot_file_path = os.path.join(save_dir, f'{title}.png')
     plt.savefig(plot_file_path)
-    plt.close() 
+    plt.close()
+
     
 
 def get_classification_report(all_labels, all_preds, save_dir):
@@ -134,19 +149,29 @@ def get_confusion_matrix(all_labels, all_preds, save_dir):
 
 
 def get_roc_auc_score(num_classes, all_labels, all_probs, save_dir):
-    # Binarize the labels for multi-class ROC
-    y_bin = label_binarize(all_labels, classes=[i for i in range(num_classes)])
-    # Compute ROC curve and ROC AUC for each class
-    fpr = dict()
-    tpr = dict()
-    roc_auc = dict()
-    for i in range(num_classes):
-        fpr[i], tpr[i], _ = metrics.roc_curve(y_bin[:, i], all_probs[:, i])
-        roc_auc[i] = metrics.auc(fpr[i], tpr[i])
-    # Plot ROC curve for each class
-    plt.figure(figsize=(8, 6))
-    for i in range(num_classes):
-        plt.plot(fpr[i], tpr[i], label=f'Class {i} (AUC = {roc_auc[i]:.2f})')
+    # For binary classification, use the scores for the positive class
+    if num_classes == 2:
+        # Compute ROC curve and ROC AUC
+        fpr, tpr, _ = metrics.roc_curve(all_labels, all_probs[:, 1])
+        roc_auc = metrics.auc(fpr, tpr)
+        
+        # Plot ROC curve
+        plt.figure(figsize=(8, 6))
+        plt.plot(fpr, tpr, label=f'ROC curve (AUC = {roc_auc:.2f})')
+    else:
+        # Binarize the labels for multi-class ROC
+        y_bin = label_binarize(all_labels, classes=[i for i in range(num_classes)])
+        # Compute ROC curve and ROC AUC for each class
+        fpr = dict()
+        tpr = dict()
+        roc_auc = dict()
+        for i in range(num_classes):
+            fpr[i], tpr[i], _ = metrics.roc_curve(y_bin[:, i], all_probs[:, i])
+            roc_auc[i] = metrics.auc(fpr[i], tpr[i])
+        # Plot ROC curve for each class
+        plt.figure(figsize=(8, 6))
+        for i in range(num_classes):
+            plt.plot(fpr[i], tpr[i], label=f'Class {i} (AUC = {roc_auc[i]:.2f})')
     # Plot diagonal line for reference
     plt.plot([0, 1], [0, 1], 'k--', label='Chance (AUC = 0.50)')
     # Add labels and titles
@@ -163,16 +188,26 @@ def get_roc_auc_score(num_classes, all_labels, all_probs, save_dir):
 
 
 def get_precision_recall_curve(num_classes, all_labels, all_probs, save_dir):
-    # Binarize the labels for multiclass precision-recall
-    all_labels_bin = label_binarize(all_labels, classes=[i for i in range(num_classes)])
-    # Plot Precision-Recall curves and compute AUC for each class
-    plt.figure()
-    for i in range(num_classes):
-        precision, recall, _ = metrics.precision_recall_curve(all_labels_bin[:, i], all_probs[:, i])
+    # For binary classification
+    if num_classes == 2:
+        # Compute Precision-Recall curve for positive class
+        precision, recall, _ = metrics.precision_recall_curve(all_labels, all_probs[:, 1])
         # Compute AUC for the precision-recall curve
         auc_score = metrics.auc(recall, precision)
-        # Plot the precision-recall curve for each class
-        plt.plot(recall, precision, lw=2, label=f'Class {i} (AUC = {auc_score:.2f})')
+        # Plot the precision-recall curve
+        plt.figure()
+        plt.plot(recall, precision, lw=2, label=f'PR curve (AUC = {auc_score:.2f})')
+    else:
+        # Binarize the labels for multiclass precision-recall
+        all_labels_bin = label_binarize(all_labels, classes=[i for i in range(num_classes)])
+        # Plot Precision-Recall curves and compute AUC for each class
+        plt.figure()
+        for i in range(num_classes):
+            precision, recall, _ = metrics.precision_recall_curve(all_labels_bin[:, i], all_probs[:, i])
+            # Compute AUC for the precision-recall curve
+            auc_score = metrics.auc(recall, precision)
+            # Plot the precision-recall curve for each class
+            plt.plot(recall, precision, lw=2, label=f'Class {i} (AUC = {auc_score:.2f})')
     # Add labels and title to the plot
     title = 'Precision-Recall Curve for Multiclass with AUC'
     plt.xlabel('Recall')
